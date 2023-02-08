@@ -23,7 +23,7 @@ from MemoryMoCo import MemoryMoCo
 from other_utils import *
 from models.preact_resnet import *
 from lr_scheduler import get_scheduler
-from apex import amp
+# from apex import amp
 
 def parse_args():
     parser = argparse.ArgumentParser(description='command for the first train')
@@ -169,7 +169,7 @@ def main(args):
     uns_contrast = MemoryMoCo(args.low_dim, args.uns_queue_k, args.uns_t, thresh=0).cuda()
     
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.wd)
-    model, optimizer = amp.initialize(model, optimizer, opt_level="O1",num_losses=2)
+    #model, optimizer = amp.initialize(model, optimizer, opt_level="O1",num_losses=2)
     scheduler = get_scheduler(optimizer, len(train_loader), args)
     
     if args.sup_queue_use == 1:

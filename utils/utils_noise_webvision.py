@@ -26,7 +26,7 @@ def train_sel(args, scheduler,model,model_ema,contrast,queue,device, train_loade
     end = time.time()
     counter = 1
     
-    scaler = amp.GradScaler()
+    #scaler = amp.GradScaler()
     criterionCE = torch.nn.CrossEntropyLoss(reduction="none")
     criterion = NCESoftmaxLoss(reduction="none").cuda()
     train_selected_loader_iter = iter(train_selected_loader)
@@ -38,86 +38,86 @@ def train_sel(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         
         model.zero_grad()
 
-        with amp.autocast():
-            ##compute uns-cl loss
-            _,feat_q = model(img1)
+    #with amp.autocast():
+        ##compute uns-cl loss
+        _,feat_q = model(img1)
 
-            with torch.no_grad():
-                _, feat_k= model_ema(img2)
+        with torch.no_grad():
+            _, feat_k= model_ema(img2)
 
-            out = contrast(feat_q, feat_k, feat_k, update=True)
-            uns_loss = criterion(out)          
-            
-            ##compute sup-cl loss with selected pairs (adapted from MOIT)
-            img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, args.alpha_m, device)
-            img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, args.alpha_m, device)
-
-            predsA, embedA = model(img1)
-            predsB, embedB = model(img2)
-            predsA = F.softmax(predsA,-1)
-            predsB = F.softmax(predsB,-1)
-            
-            with torch.no_grad():
-                predsA_ema, embedA_ema = model_ema(img1)
-                predsB_ema, embedB_ema = model_ema(img2)
-                predsA_ema = F.softmax(predsA_ema,-1)
-                predsB_ema = F.softmax(predsB_ema,-1)
-
-            
-            if args.sup_queue_use == 1:
-                queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0))
-
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
-                queue_feats, queue_pros, queue_index = queue.get()
-                    
-            else:
-                queue_feats, queue_pros, queue_index = torch.Tensor([]), torch.Tensor([]), torch.Tensor([])
-            
-
-            maskUnsup_batch, maskUnsup_mem, mask2Unsup_batch, mask2Unsup_mem = unsupervised_masks_estimation(args, queue, mix_index1, mix_index2, epoch, bsz, device)
-
-            embeds_batch = torch.cat([embedA, embedB], dim=0)
-            pros_batch = torch.cat([predsA, predsB], dim=0)
-            pairwise_comp_batch = torch.matmul(embeds_batch, embeds_batch.t())
-            pros_simi_batch = torch.mm(pros_batch,pros_batch.t())
-
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
-                embeds_mem = torch.cat([embedA, embedB, queue_feats], dim=0)
-                pros_mem = torch.cat([predsA, predsB, queue_pros], dim=0)
-                pairwise_comp_mem = torch.matmul(embeds_mem[:2 * bsz], embeds_mem[2 * bsz:].t()) ##Compare mini-batch with memory
-                pros_simi_mem = torch.mm(pros_mem[:2 * bsz],pros_mem[2 * bsz:].t())
-
-            maskSup_batch, maskSup_mem, mask2Sup_batch, mask2Sup_mem = \
-                supervised_masks_estimation(args, index.long(), queue, queue_index.long(), mix_index1, mix_index2, epoch, bsz, device,selected_pairs)
-
-            logits_mask_batch = (torch.ones_like(maskSup_batch) - torch.eye(2 * bsz).to(device))  ## Negatives mask, i.e. all except self-contrast sample
-
-            loss_sup = Supervised_ContrastiveLearning_loss(args, pairwise_comp_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
-
-            ## compute simi_loss
-            loss_simi = Simi_loss(args, pros_simi_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
-            
-            ## using queue
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
-
-                logits_mask_mem = torch.ones_like(maskSup_mem) ## Negatives mask, i.e. all except self-contrast sample
-
-                if queue.ptr == 0:
-                    logits_mask_mem[:, -2 * bsz:] = logits_mask_batch
-                else:
-                    logits_mask_mem[:, queue.ptr - (2 * bsz):queue.ptr] = logits_mask_batch
-
-                loss_mem = Supervised_ContrastiveLearning_loss(args, pairwise_comp_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
-
-                loss_sup = loss_sup + loss_mem
-                
-                loss_simi_mem = Simi_loss(args, pros_simi_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
-                loss_simi = loss_simi + loss_simi_mem
-                
-                sel_mask=(maskSup_batch[:bsz].sum(1)+maskSup_mem[:bsz].sum(1))<2
-            else:
-                sel_mask=(maskSup_batch[:bsz].sum(1))<1
+        out = contrast(feat_q, feat_k, feat_k, update=True)
+        uns_loss = criterion(out)          
         
+        ##compute sup-cl loss with selected pairs (adapted from MOIT)
+        img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, args.alpha_m, device)
+        img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, args.alpha_m, device)
+
+        predsA, embedA = model(img1)
+        predsB, embedB = model(img2)
+        predsA = F.softmax(predsA,-1)
+        predsB = F.softmax(predsB,-1)
+        
+        with torch.no_grad():
+            predsA_ema, embedA_ema = model_ema(img1)
+            predsB_ema, embedB_ema = model_ema(img2)
+            predsA_ema = F.softmax(predsA_ema,-1)
+            predsB_ema = F.softmax(predsB_ema,-1)
+
+        
+        if args.sup_queue_use == 1:
+            queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0))
+
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+            queue_feats, queue_pros, queue_index = queue.get()
+                
+        else:
+            queue_feats, queue_pros, queue_index = torch.Tensor([]), torch.Tensor([]), torch.Tensor([])
+        
+
+        maskUnsup_batch, maskUnsup_mem, mask2Unsup_batch, mask2Unsup_mem = unsupervised_masks_estimation(args, queue, mix_index1, mix_index2, epoch, bsz, device)
+
+        embeds_batch = torch.cat([embedA, embedB], dim=0)
+        pros_batch = torch.cat([predsA, predsB], dim=0)
+        pairwise_comp_batch = torch.matmul(embeds_batch, embeds_batch.t())
+        pros_simi_batch = torch.mm(pros_batch,pros_batch.t())
+
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+            embeds_mem = torch.cat([embedA, embedB, queue_feats], dim=0)
+            pros_mem = torch.cat([predsA, predsB, queue_pros], dim=0)
+            pairwise_comp_mem = torch.matmul(embeds_mem[:2 * bsz], embeds_mem[2 * bsz:].t()) ##Compare mini-batch with memory
+            pros_simi_mem = torch.mm(pros_mem[:2 * bsz],pros_mem[2 * bsz:].t())
+
+        maskSup_batch, maskSup_mem, mask2Sup_batch, mask2Sup_mem = \
+            supervised_masks_estimation(args, index.long(), queue, queue_index.long(), mix_index1, mix_index2, epoch, bsz, device,selected_pairs)
+
+        logits_mask_batch = (torch.ones_like(maskSup_batch) - torch.eye(2 * bsz).to(device))  ## Negatives mask, i.e. all except self-contrast sample
+
+        loss_sup = Supervised_ContrastiveLearning_loss(args, pairwise_comp_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
+
+        ## compute simi_loss
+        loss_simi = Simi_loss(args, pros_simi_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
+        
+        ## using queue
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+
+            logits_mask_mem = torch.ones_like(maskSup_mem) ## Negatives mask, i.e. all except self-contrast sample
+
+            if queue.ptr == 0:
+                logits_mask_mem[:, -2 * bsz:] = logits_mask_batch
+            else:
+                logits_mask_mem[:, queue.ptr - (2 * bsz):queue.ptr] = logits_mask_batch
+
+            loss_mem = Supervised_ContrastiveLearning_loss(args, pairwise_comp_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
+
+            loss_sup = loss_sup + loss_mem
+            
+            loss_simi_mem = Simi_loss(args, pros_simi_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
+            loss_simi = loss_simi + loss_simi_mem
+            
+            sel_mask=(maskSup_batch[:bsz].sum(1)+maskSup_mem[:bsz].sum(1))<2
+        else:
+            sel_mask=(maskSup_batch[:bsz].sum(1))<1
+    
         ## compute class loss with selected examples
         try:
             img, labels, _  = next(train_selected_loader_iter)
@@ -130,24 +130,28 @@ def train_sel(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, args.alpha_m, device)
 
         
-        with amp.autocast():
-            predsA, embedA = model(img1)
-            predsB, embedB = model(img2)
+    #with amp.autocast():
+        predsA, embedA = model(img1)
+        predsB, embedB = model(img2)
 
-            lossClassif = ClassificationLoss(args, predsA, predsB, y_a1, y_b1, y_a2, y_b2, mix_index1,
-                                                mix_index2, lam1, lam2, criterionCE, epoch, device)
-            
+        lossClassif = ClassificationLoss(args, predsA, predsB, y_a1, y_b1, y_a2, y_b2, mix_index1,
+                                            mix_index2, lam1, lam2, criterionCE, epoch, device)
+        
         
         ## compute sel_loss by combining uns-cl loss and  sup-cl loss  
             sel_loss = (sel_mask*uns_loss).mean() + loss_sup
             
             loss = sel_loss + args.lambda_c*lossClassif + args.lambda_s*loss_simi
 
-        scaler.scale(loss).backward()
-        scaler.unscale_(optimizer)
+        #scaler.scale(loss).backward()
+        loss.backward()
+
+        #scaler.unscale_(optimizer)
         nn.utils.clip_grad_norm_(model.parameters(), max_norm=1, norm_type=2) 
-        scaler.step(optimizer)
-        scaler.update()
+        #scaler.step(optimizer)
+        optimizer.step()
+
+        #scaler.update()
         moment_update(model, model_ema, args.alpha_moving)
         scheduler.step()        
         
@@ -173,7 +177,7 @@ def train_uns(args, scheduler,model,model_ema,contrast,queue,device, train_loade
     end = time.time()
     counter = 1
     
-    scaler = amp.GradScaler()
+    #scaler = amp.GradScaler()
     criterion = NCESoftmaxLoss(reduction="mean").cuda()
     for batch_idx, (img, labels, index) in enumerate(train_loader):
 
@@ -183,31 +187,35 @@ def train_uns(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         
         model.zero_grad()
         
-        with amp.autocast():
-            ##compute uns-cl loss
-            _,feat_q = model(img1)
-            with torch.no_grad():
-                _, feat_k= model_ema(img2)
+    #with amp.autocast():
+        ##compute uns-cl loss
+        _,feat_q = model(img1)
+        with torch.no_grad():
+            _, feat_k= model_ema(img2)
 
-            out = contrast(feat_q, feat_k, feat_k, update=True)
-            uns_loss = criterion(out).mean()
+        out = contrast(feat_q, feat_k, feat_k, update=True)
+        uns_loss = criterion(out).mean()
 
-            ## update sup queue
-            img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, args.alpha_m, device)
-            img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, args.alpha_m, device)
+        ## update sup queue
+        img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, args.alpha_m, device)
+        img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, args.alpha_m, device)
 
-            with torch.no_grad():
-                predsA_ema, embedA_ema = model_ema(img1)
-                predsB_ema, embedB_ema = model_ema(img2)
-                predsA_ema = F.softmax(predsA_ema,-1)
-                predsB_ema = F.softmax(predsB_ema,-1)
+        with torch.no_grad():
+            predsA_ema, embedA_ema = model_ema(img1)
+            predsB_ema, embedB_ema = model_ema(img2)
+            predsA_ema = F.softmax(predsA_ema,-1)
+            predsB_ema = F.softmax(predsB_ema,-1)
 
-            if args.sup_queue_use == 1:
-                queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0)) 
-                
-        scaler.scale(uns_loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+        if args.sup_queue_use == 1:
+            queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0)) 
+            
+        #scaler.scale(uns_loss).backward()
+        uns_loss.backward()
+
+        #scaler.step(optimizer)
+        optimizer.step()
+
+        #scaler.update()
         moment_update(model, model_ema, args.alpha_moving)
         scheduler.step()
         
@@ -233,7 +241,7 @@ def train_sup(args, scheduler,model,model_ema,contrast,queue,device, train_loade
     end = time.time()
     counter = 1
     
-    scaler = amp.GradScaler()
+    #scaler = amp.GradScaler()
     criterionCE = torch.nn.CrossEntropyLoss(reduction="none").cuda()
     train_selected_loader_iter = iter(train_selected_loader)
     for batch_idx, (img, labels, index) in enumerate(train_loader):
@@ -244,71 +252,71 @@ def train_sup(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         
         model.zero_grad()
         
-        with amp.autocast():
-            ## update uns queue
-            _,feat_q = model(img1)
+    #with amp.autocast():
+        ## update uns queue
+        _,feat_q = model(img1)
 
-            with torch.no_grad():
-                _, feat_k= model_ema(img2)
+        with torch.no_grad():
+            _, feat_k= model_ema(img2)
 
-            contrast(feat_q, feat_k, feat_k, update=True)
-            
-            ##compute sup-cl loss with noisy pairs (adapted from MOIT)            
-            img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, 0, device)
-            img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, 0, device)
-
-
-            predsA, embedA = model(img1)
-            predsB, embedB = model(img2)
-            predsA = F.softmax(predsA,-1)
-            predsB = F.softmax(predsB,-1)
-            
-            with torch.no_grad():
-                predsA_ema, embedA_ema = model_ema(img1)
-                predsB_ema, embedB_ema = model_ema(img2)
-                predsA_ema = F.softmax(predsA_ema,-1)
-                predsB_ema = F.softmax(predsB_ema,-1)
-
-            if args.sup_queue_use == 1:
-                queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0))
-
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
-                queue_feats, queue_pros, queue_index = queue.get()
-                    
-            else:
-                queue_feats, queue_pros, queue_index = torch.Tensor([]), torch.Tensor([]), torch.Tensor([])
-
-            maskUnsup_batch, maskUnsup_mem, mask2Unsup_batch, mask2Unsup_mem = unsupervised_masks_estimation(args, queue, mix_index1, mix_index2, epoch, bsz, device)
-
-            embeds_batch = torch.cat([embedA, embedB], dim=0)
-            pros_batch = torch.cat([predsA, predsB], dim=0)
-            pairwise_comp_batch = torch.matmul(embeds_batch, embeds_batch.t())
-
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
-                embeds_mem = torch.cat([embedA, embedB, queue_feats], dim=0)
-                pairwise_comp_mem = torch.matmul(embeds_mem[:2 * bsz], embeds_mem[2 * bsz:].t()) ##Compare mini-batch with memory
-
-            maskSup_batch, maskSup_mem, mask2Sup_batch, mask2Sup_mem = \
-                supervised_masks_estimation(args, index.long(), queue, queue_index.long(), mix_index1, mix_index2, epoch, bsz, device,noisy_pairs)
+        contrast(feat_q, feat_k, feat_k, update=True)
+        
+        ##compute sup-cl loss with noisy pairs (adapted from MOIT)            
+        img1, y_a1, y_b1, mix_index1, lam1 = mix_data_lab(img1, labels, 0, device)
+        img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, 0, device)
 
 
-            logits_mask_batch = (torch.ones_like(maskSup_batch) - torch.eye(2 * bsz).to(device))  ## Negatives mask, i.e. all except self-contrast sample
+        predsA, embedA = model(img1)
+        predsB, embedB = model(img2)
+        predsA = F.softmax(predsA,-1)
+        predsB = F.softmax(predsB,-1)
+        
+        with torch.no_grad():
+            predsA_ema, embedA_ema = model_ema(img1)
+            predsB_ema, embedB_ema = model_ema(img2)
+            predsA_ema = F.softmax(predsA_ema,-1)
+            predsB_ema = F.softmax(predsB_ema,-1)
 
-            loss_sup = Supervised_ContrastiveLearning_loss(args, pairwise_comp_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
-            
-            if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+        if args.sup_queue_use == 1:
+            queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0))
 
-                logits_mask_mem = torch.ones_like(maskSup_mem) ## Negatives mask, i.e. all except self-contrast sample
-
-                if queue.ptr == 0:
-                    logits_mask_mem[:, -2 * bsz:] = logits_mask_batch
-                else:
-                    logits_mask_mem[:, queue.ptr - (2 * bsz):queue.ptr] = logits_mask_batch
-
-                loss_mem = Supervised_ContrastiveLearning_loss(args, pairwise_comp_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
-
-                loss_sup = loss_sup + loss_mem
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+            queue_feats, queue_pros, queue_index = queue.get()
                 
+        else:
+            queue_feats, queue_pros, queue_index = torch.Tensor([]), torch.Tensor([]), torch.Tensor([])
+
+        maskUnsup_batch, maskUnsup_mem, mask2Unsup_batch, mask2Unsup_mem = unsupervised_masks_estimation(args, queue, mix_index1, mix_index2, epoch, bsz, device)
+
+        embeds_batch = torch.cat([embedA, embedB], dim=0)
+        pros_batch = torch.cat([predsA, predsB], dim=0)
+        pairwise_comp_batch = torch.matmul(embeds_batch, embeds_batch.t())
+
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+            embeds_mem = torch.cat([embedA, embedB, queue_feats], dim=0)
+            pairwise_comp_mem = torch.matmul(embeds_mem[:2 * bsz], embeds_mem[2 * bsz:].t()) ##Compare mini-batch with memory
+
+        maskSup_batch, maskSup_mem, mask2Sup_batch, mask2Sup_mem = \
+            supervised_masks_estimation(args, index.long(), queue, queue_index.long(), mix_index1, mix_index2, epoch, bsz, device,noisy_pairs)
+
+
+        logits_mask_batch = (torch.ones_like(maskSup_batch) - torch.eye(2 * bsz).to(device))  ## Negatives mask, i.e. all except self-contrast sample
+
+        loss_sup = Supervised_ContrastiveLearning_loss(args, pairwise_comp_batch, maskSup_batch, mask2Sup_batch, maskUnsup_batch, mask2Unsup_batch, logits_mask_batch, lam1, lam2, bsz, epoch, device,batch_idx)
+        
+        if args.sup_queue_use == 1 and epoch > args.sup_queue_begin:
+
+            logits_mask_mem = torch.ones_like(maskSup_mem) ## Negatives mask, i.e. all except self-contrast sample
+
+            if queue.ptr == 0:
+                logits_mask_mem[:, -2 * bsz:] = logits_mask_batch
+            else:
+                logits_mask_mem[:, queue.ptr - (2 * bsz):queue.ptr] = logits_mask_batch
+
+            loss_mem = Supervised_ContrastiveLearning_loss(args, pairwise_comp_mem, maskSup_mem, mask2Sup_mem, maskUnsup_mem, mask2Unsup_mem, logits_mask_mem, lam1, lam2, bsz, epoch, device,batch_idx)
+
+            loss_sup = loss_sup + loss_mem
+            
         ## compute class loss with noisy examples
         try:
             img, labels, _  = next(train_selected_loader_iter)
@@ -321,19 +329,24 @@ def train_sup(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         img2, y_a2, y_b2, mix_index2, lam2 = mix_data_lab(img2, labels, 0, device)
 
         
-        with amp.autocast():
-            predsA, embedA = model(img1)
-            predsB, embedB = model(img2)
+    #with amp.autocast():
+        predsA, embedA = model(img1)
+        predsB, embedB = model(img2)
 
-            lossClassif = ClassificationLoss(args, predsA, predsB, y_a1, y_b1, y_a2, y_b2, mix_index1,
-                                                mix_index2, lam1, lam2, criterionCE, epoch, device)
-            
-                 
-            loss = loss_sup.mean() + args.lambda_c*lossClassif
+        lossClassif = ClassificationLoss(args, predsA, predsB, y_a1, y_b1, y_a2, y_b2, mix_index1,
+                                            mix_index2, lam1, lam2, criterionCE, epoch, device)
         
-        scaler.scale(loss).backward()
-        scaler.step(optimizer)
-        scaler.update()
+                
+        loss = loss_sup.mean() + args.lambda_c*lossClassif
+    
+        # scaler.scale(loss).backward()
+        loss.backward()
+
+        # scaler.step(optimizer)
+        optimizer.step()
+        
+        # scaler.update()
+        
         moment_update(model, model_ema, args.alpha_moving)       
         scheduler.step()
 

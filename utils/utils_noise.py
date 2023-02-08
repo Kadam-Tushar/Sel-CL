@@ -11,7 +11,7 @@ from losses import *
 import time
 import warnings
 import os, sys
-from apex import amp
+#from apex import amp
 warnings.filterwarnings('ignore')
 
 def train_sel(args, scheduler,model,model_ema,contrast,queue,device, train_loader, train_selected_loader, optimizer, epoch,selected_pairs):
@@ -140,11 +140,15 @@ def train_sel(args, scheduler,model,model_ema,contrast,queue,device, train_loade
         
         loss = sel_loss + args.lambda_c*lossClassif
         if(args.lambda_s>0):
-            with amp.scale_loss(args.lambda_s*loss_simi, optimizer,loss_id=1) as scaled_loss:
-                scaled_loss.backward(retain_graph=True)
-            nn.utils.clip_grad_norm_(amp.master_params(optimizer), max_norm=0.25, norm_type=2)
-        with amp.scale_loss(loss, optimizer,loss_id=0) as scaled_loss:
-            scaled_loss.backward()
+            # with amp.scale_loss(args.lambda_s*loss_simi, optimizer,loss_id=1) as scaled_loss:
+            #     scaled_loss.backward(retain_graph=True)
+            loss_simi=args.lambda_s*loss_simi
+            loss_simi.backward(retain_graph=True)
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.25, norm_type=2)
+        
+        # with amp.scale_loss(loss, optimizer,loss_id=0) as scaled_loss:
+        #     scaled_loss.backward()
+        loss.backward()
         optimizer.step()
         scheduler.step()
 
@@ -204,8 +208,9 @@ def train_uns(args, scheduler,model,model_ema,contrast,queue,device, train_loade
             queue.enqueue_dequeue(torch.cat((embedA_ema.detach(), embedB_ema.detach()), dim=0), torch.cat((predsA_ema.detach(), predsB_ema.detach()), dim=0), torch.cat((index.detach().squeeze(), index.detach().squeeze()), dim=0))
         
         
-        with amp.scale_loss(uns_loss, optimizer,loss_id=0) as scaled_loss:
-            scaled_loss.backward()
+        # with amp.scale_loss(uns_loss, optimizer,loss_id=0) as scaled_loss:
+        #     scaled_loss.backward()
+        uns_loss.backward()
         optimizer.step()
         scheduler.step()
         
@@ -328,8 +333,9 @@ def train_sup(args, scheduler,model,model_ema,contrast,queue,device, train_loade
             
         loss = loss_sup.mean() + args.lambda_c*lossClassif
         
-        with amp.scale_loss(loss, optimizer,loss_id=0) as scaled_loss:
-            scaled_loss.backward()
+        # with amp.scale_loss(loss, optimizer,loss_id=0) as scaled_loss:
+        #     scaled_loss.backward()
+        loss.backward()
         optimizer.step()
         scheduler.step()
 

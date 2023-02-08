@@ -25,7 +25,7 @@ def train_mixup(args, model, device, train_loader, optimizer, epoch):
     counter = 1
 
     criterionCE = torch.nn.CrossEntropyLoss(reduction="none")
-    scaler = amp.GradScaler()
+    #scaler = amp.GradScaler()
     for batch_idx, (img, labels, index) in enumerate(train_loader):
 
         img1, img_noDA, labels, index = img[0].to(device), img[1].to(device), labels.to(device), index.to(device)
@@ -34,26 +34,31 @@ def train_mixup(args, model, device, train_loader, optimizer, epoch):
 
         model.zero_grad()
 
-        with amp.autocast():
-            predsA, _ = model(img1)
+    #with amp.autocast():
+        predsA, _ = model(img1)
 
-            ## Forward pass free of DA
-            predsNoDA, _ = model(img_noDA)
-            predsNoDA = predsNoDA.detach()
+        ## Forward pass free of DA
+        predsNoDA, _ = model(img_noDA)
+        predsNoDA = predsNoDA.detach()
 
-            ## Compute classification loss (returned individual per-sample loss)
-            lossClassif = criterionMixBoot(args, predsA, predsNoDA, y_a1, y_b1, mix_index1, lam1, criterionCE, epoch,
-                                           device)
+        ## Compute classification loss (returned individual per-sample loss)
+        lossClassif = criterionMixBoot(args, predsA, predsNoDA, y_a1, y_b1, mix_index1, lam1, criterionCE, epoch,
+                                        device)
 
-            ## Average loss after saving it per-sample
-            loss = lossClassif.mean()
+        ## Average loss after saving it per-sample
+        loss = lossClassif.mean()
 
         # compute gradient and do SGD step
-        scaler.scale(loss).backward()
+        #scaler.scale(loss).backward()
+        loss.backward()
+
         #scaler.unscale_(optimizer)
-        #nn.utils.clip_grad_norm_(model.parameters(), max_norm=5, norm_type=2) 
-        scaler.step(optimizer)
-        scaler.update()
+        nn.utils.clip_grad_norm_(model.parameters(), max_norm=5, norm_type=2) 
+        
+        #scaler.step(optimizer)
+        optimizer.step()
+
+        #scaler.update()
 
         prec1, prec5 = accuracy_v2(predsNoDA, labels, top=[1, 5])
         train_loss.update(loss.item(), img1.size(0))

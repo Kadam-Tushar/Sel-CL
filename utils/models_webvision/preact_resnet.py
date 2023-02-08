@@ -27,7 +27,7 @@ class NormedLinear(nn.Module):
         super(NormedLinear, self).__init__()
         self.weight = Parameter(torch.Tensor(in_features, out_features))
         self.weight.data.uniform_(-1, 1).renorm_(2, 1, 1e-5).mul_(1e5)
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.normalize(x, dim=1).mm(F.normalize(self.weight, dim=0))
         return out
@@ -48,7 +48,7 @@ class BasicBlock(nn.Module):
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(self.expansion*planes)
             )
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
@@ -73,7 +73,7 @@ class PreActBlock(nn.Module):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)
             )
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.relu(self.bn1(x))
         shortcut = self.shortcut(out)
@@ -100,7 +100,7 @@ class PreActBlock_drop(nn.Module):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)
             )
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.relu(self.bn1(x))
         shortcut = self.shortcut(out)
@@ -130,7 +130,7 @@ class Bottleneck(nn.Module):
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(self.expansion*planes)
             )
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
         out = F.relu(self.bn2(self.conv2(out)))
@@ -158,7 +158,7 @@ class PreActBottleneck(nn.Module):
             self.shortcut = nn.Sequential(
                 nn.Conv2d(in_planes, self.expansion*planes, kernel_size=1, stride=stride, bias=False)
             )
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x):
         out = F.relu(self.bn1(x))
         shortcut = self.shortcut(out)
@@ -225,7 +225,7 @@ class ResNet(nn.Module):
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
         
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, x, feat_classifier=False):
         out = self.conv1(x)
         out = self.bn1(out)
@@ -266,6 +266,6 @@ class LinearClassifier(nn.Module):
     def __init__(self, feat_dim=512, num_classes=10):
         super(LinearClassifier, self).__init__()
         self.fc = nn.Linear(feat_dim, num_classes)
-    @amp.autocast()
+    #@amp.autocast()
     def forward(self, features):
         return self.fc(features)

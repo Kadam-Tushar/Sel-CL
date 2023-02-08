@@ -7,7 +7,7 @@ import numpy as np
 import time
 import warnings
 import os, sys
-from apex import amp
+#from apex import amp
 warnings.filterwarnings('ignore')
 
 ## Input interpolation functions
